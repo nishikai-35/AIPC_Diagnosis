@@ -1,5 +1,5 @@
-#define MyAppName "AI PC Diagnosis"
-#define MyAppVersion "1.0.0"
+﻿#define MyAppName "AI PC Diagnosis"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "AI PC Diagnosis"
 
 [Setup]
@@ -24,13 +24,24 @@ ArchitecturesInstallIn64BitMode=x64compatible
 
 [Files]
 
-; PyInstallerで作成したアプリ本体
+; PyInstaller縺ｧ菴懈・縺励◆繧｢繝励Μ譛ｬ菴・
 Source: "..\dist\AI_PC_Diagnosis\*"; \
     DestDir: "{app}"; \
     Flags: recursesubdirs createallsubdirs ignoreversion
 
-; 初回インストール時のみconfig.iniを配置
-; 既存の管理者設定は上書きしない
+; 蛻晏屓繧､繝ｳ繧ｹ繝医・繝ｫ譎ゅ・縺ｿconfig.ini繧帝・鄂ｮ
+; 譌｢蟄倥・邂｡逅・・ｨｭ螳壹・荳頑嶌縺阪＠縺ｪ縺・
+
+; LibreHardwareMonitor
+Source: "..\tools\LibreHardwareMonitor\*"; \
+    DestDir: "{app}\tools\LibreHardwareMonitor"; \
+    Flags: recursesubdirs createallsubdirs ignoreversion
+
+; smartctl
+Source: "..\tools\smartctl\*"; \
+    DestDir: "{app}\tools\smartctl"; \
+    Flags: recursesubdirs createallsubdirs ignoreversion
+
 Source: "..\config.ini"; \
     DestDir: "{commonappdata}\AI_PC_Diagnosis"; \
     Flags: onlyifdoesntexist uninsneveruninstall
@@ -51,3 +62,4 @@ Name: "{group}\AI PC Diagnosis"; \
 Name: "{autodesktop}\AI PC Diagnosis"; \
     Filename: "{app}\AI_PC_Diagnosis.exe"; \
     WorkingDir: "{app}"
+

@@ -788,23 +788,38 @@ class Dashboard:
             return
 
         try:
-
+        
             # 絶対パスへ変換
             absolute_path = os.path.abspath(
                 self.html_path
             )
-
+        
+            print(
+                "HTMLレポートを開きます：",
+                absolute_path,
+            )
+        
             # Windowsの既定ブラウザで開く
-            webbrowser.open(
+            result = webbrowser.open(
                 "file:///"
                 + absolute_path.replace(
                     "\\",
                     "/",
                 )
             )
-
+        
+            print(
+                "webbrowser.open 結果：",
+                result,
+            )
+        
         except Exception as e:
-
+        
+            print(
+                "HTMLレポート表示エラー：",
+                repr(e),
+            )
+        
             messagebox.showerror(
                 "HTMLレポート",
                 "HTMLレポートを開けませんでした。\n\n"
