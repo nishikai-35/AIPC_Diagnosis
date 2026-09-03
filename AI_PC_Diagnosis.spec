@@ -1,12 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+from PyInstaller.utils.hooks import collect_submodules
+
+
+hiddenimports = []
+
+hiddenimports += collect_submodules("gui")
+hiddenimports += collect_submodules("diagnosis")
+
 
 a = Analysis(
-    ['app.py'],
-    pathex=[],
+    ["gui/gui_main.py"],
+    pathex=["."],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -14,25 +22,27 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
-pyz = PYZ(a.pure)
+
+
+pyz = PYZ(
+    a.pure
+)
+
 
 exe = EXE(
     pyz,
     a.scripts,
     [],
     exclude_binaries=True,
-    name='AI_PC_Diagnosis',
+    name="AI_PC_Diagnosis",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
+    console=False,
 )
+
+
 coll = COLLECT(
     exe,
     a.binaries,
@@ -40,5 +50,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='AI_PC_Diagnosis',
+    name="AI_PC_Diagnosis",
 )
