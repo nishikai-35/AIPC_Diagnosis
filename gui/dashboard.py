@@ -127,7 +127,7 @@ class Dashboard:
             pady=10
         )
 
-        self.ai_enabled = tk.BooleanVar(value=True)
+        self.ai_enabled = tk.BooleanVar(value=False)
 
         ttk.Radiobutton(
             ai_frame,
@@ -716,7 +716,7 @@ class Dashboard:
             self.html_path = export_html(
                 diagnosis,
                 ai_analysis,
-                "reports",
+                REPORTS_DIR,
             )
 
             # ファイルが実際に存在するか確認
