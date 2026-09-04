@@ -135,12 +135,14 @@ def start_libre_hardware_monitor():
         subprocess.Popen(
             [
                 "powershell",
+                "-WindowStyle", "Hidden",
                 "-Command",
                 (
                     f'Start-Process '
                     f'-FilePath "{LHM_EXE}" '
                     f'-WorkingDirectory "{LHM_EXE.parent}" '
-                    f'-Verb RunAs'
+                    f'-Verb RunAs '
+                    f'-WindowStyle Hidden'
                 ),
             ],
             creationflags=subprocess.CREATE_NO_WINDOW,
