@@ -16,6 +16,7 @@ __pycache__/
 
 build/
 dist/
+tools/
 
 # Backup spec files
 *.spec.bak
@@ -26,6 +27,7 @@ dist/
 
 logs/
 reports/
+docs/
 
 # User configuration
 config.ini
@@ -35,6 +37,7 @@ config.ini
 # =========================================================
 
 release/
+installer/
 
 # =========================================================
 # Temporary files
@@ -47,6 +50,7 @@ release/
 # IDE / Editor
 # =========================================================
 
+.vs/
 .vscode/
 .idea/
 
