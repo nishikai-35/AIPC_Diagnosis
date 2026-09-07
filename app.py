@@ -150,7 +150,10 @@ def print_top_cpu_processes(processes):
         )
 
 
-def run_diagnosis_process(ai_enabled=True):
+def run_diagnosis_process(
+    ai_enabled=True,
+    ai_model="gemma4",
+):
     """
     PC情報を取得して診断を実行し、
     診断結果とAI分析結果をJSONログとして保存する。
@@ -190,7 +193,7 @@ def run_diagnosis_process(ai_enabled=True):
 
     # AI分析
     if ai_enabled:
-        ai_analysis = analyze_with_ai(diagnosis)
+        ai_analysis = analyze_with_ai(diagnosis, model=ai_model)
     else:
         ai_analysis = None
 
@@ -210,7 +213,7 @@ def run_diagnosis_process(ai_enabled=True):
     )
 
 
-def main(scheduled=False, ai_enabled=True):
+def main(scheduled=False, ai_enabled=True, ai_model="gemma4"):
 
     (
         info,
@@ -220,7 +223,8 @@ def main(scheduled=False, ai_enabled=True):
         ai_analysis,
         log_path,
     ) = run_diagnosis_process(
-        ai_enabled=ai_enabled
+        ai_enabled=ai_enabled,
+        ai_model=ai_model,
     )
 
     # ============================================================
@@ -337,11 +341,22 @@ if __name__ == "__main__":
         action="store_true",
         help="AI分析を無効にする",
     )
+    
+    parser.add_argument(
+        "--ai-model",
+        choices=[
+            "gemma4",
+            "llama3.2:3b",
+        ],
+        default="gemma4",
+        help="AI分析に使用するOllamaモデル",
+    )
 
     args = parser.parse_args()
 
     main(
         scheduled=args.scheduled,
         ai_enabled=not args.no_ai,
+        ai_model=args.ai_model,
     )
 

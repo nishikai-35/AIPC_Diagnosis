@@ -10,7 +10,14 @@ from dataclasses import dataclass
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
 
-OLLAMA_MODEL = "gemma4"
+# Ollamaで使用可能なAIモデル
+OLLAMA_MODELS = {
+    "Gemma 4": "gemma4",
+    "Llama 3.2 3B": "llama3.2:3b",
+}
+
+# デフォルトモデル
+DEFAULT_OLLAMA_MODEL = "gemma4"
 
 # AI応答の最大待機時間（秒）
 OLLAMA_TIMEOUT = 300
@@ -26,6 +33,7 @@ class AIAnalysis:
     priority: str
     causes: list[str]
     recommendations: list[str]
+    model: str
 
 
 # ============================================================
@@ -60,14 +68,14 @@ def diagnosis_to_dict(diagnosis):
 # Ollama呼び出し
 # ============================================================
 
-def call_ollama(prompt):
+def call_ollama(prompt, model):
     """
     Ollamaにプロンプトを送信し、
     AIの回答文字列を取得する。
     """
 
     request_data = {
-        "model": OLLAMA_MODEL,
+        "model": model,
         "prompt": prompt,
         "stream": False,
     }
@@ -174,7 +182,7 @@ def clean_json_response(response):
 # AI回答の検証
 # ============================================================
 
-def validate_ai_result(result, diagnosis):
+def validate_ai_result(result, diagnosis, model):
     """
     AIが返したJSONの内容を検証する。
 
@@ -256,6 +264,7 @@ def validate_ai_result(result, diagnosis):
         priority=priority,
         causes=causes,
         recommendations=recommendations,
+        model=model,
     )
 
 
@@ -263,7 +272,7 @@ def validate_ai_result(result, diagnosis):
 # フォールバック
 # ============================================================
 
-def create_fallback_analysis(diagnosis):
+def create_fallback_analysis(diagnosis, model):
     """
     Ollamaが利用できない場合の代替AI分析結果を作成する。
 
@@ -275,6 +284,7 @@ def create_fallback_analysis(diagnosis):
         priority=diagnosis.status,
         causes=list(diagnosis.causes),
         recommendations=list(diagnosis.recommendations),
+        model=model,
     )
 
 
@@ -282,7 +292,7 @@ def create_fallback_analysis(diagnosis):
 # AI分析
 # ============================================================
 
-def analyze_with_ai(diagnosis):
+def analyze_with_ai(diagnosis, model=None):
     """
     診断結果をOllamaのローカルAIで分析する。
 
@@ -290,6 +300,13 @@ def analyze_with_ai(diagnosis):
     診断システム全体は停止せず、
     診断エンジンの結果をフォールバックとして返す。
     """
+    if model is None:
+        model = DEFAULT_OLLAMA_MODEL
+        
+    if model not in OLLAMA_MODELS.values():
+        raise ValueError(
+            f"未対応のOllamaモデルです: {model}"
+        )
 
     data = diagnosis_to_dict(diagnosis)
 
@@ -298,7 +315,7 @@ def analyze_with_ai(diagnosis):
     print("=" * 60)
 
     print("OllamaによるAI分析を開始します...")
-    print(f"使用モデル: {OLLAMA_MODEL}")
+    print(f"使用モデル: {model}")
 
     prompt = f"""
 あなたはPC診断を専門とするAIです。
@@ -357,7 +374,7 @@ JSON以外の文章は出力しないでください。
         # Ollama呼び出し
         # ----------------------------------------------------
 
-        response = call_ollama(prompt)
+        response = call_ollama(prompt, model)
 
         print("OllamaからAI分析結果を取得しました。")
 
@@ -380,6 +397,7 @@ JSON以外の文章は出力しないでください。
         analysis = validate_ai_result(
             result,
             diagnosis,
+            model,
         )
 
         print("AI分析結果の解析に成功しました。")
@@ -412,4 +430,4 @@ JSON以外の文章は出力しないでください。
 
     print("診断エンジンの結果を使用します。")
 
-    return create_fallback_analysis(diagnosis)
+    return create_fallback_analysis(diagnosis, model)

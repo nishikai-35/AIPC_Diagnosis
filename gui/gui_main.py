@@ -37,45 +37,69 @@ class AIPCDiagnosisApp:
     # 診断開始
     # ======================================================
 
-    def start_diagnosis(self, ai_enabled=None):
+    def start_diagnosis(
+        self,
+        ai_enabled=None,
+        ai_model=None,
+    ):
         """診断を開始する"""
-
+    
         if self.diagnosis_running:
             return
-
+    
         self.diagnosis_running = True
-
-        # Dashboard側のAI分析設定を取得
+    
+        # Dashboard側のAI分析ON/OFF設定を取得
         if ai_enabled is None:
             ai_enabled = getattr(
                 self.dashboard,
-            "ai_enabled",
-            True,
-        )
-
+                "ai_enabled",
+                True,
+            )
+    
+        # Dashboard側の選択モデルを取得
+        if ai_model is None:
+            ai_model = getattr(
+                self.dashboard,
+                "ai_model",
+                "gemma4",
+            )
+    
         print(
             f"診断開始：AI分析 "
             f"{'ON' if ai_enabled else 'OFF'}"
         )
-
+    
+        if ai_enabled:
+            print(
+                f"使用モデル：{ai_model}"
+            )
+    
         self.dashboard.diagnosis_started()
-
+    
         thread = threading.Thread(
             target=self.run_diagnosis,
-            args=(ai_enabled,),
+            args=(
+                ai_enabled,
+                ai_model,
+            ),
             daemon=True,
         )
-
+    
         thread.start()
 
     # ======================================================
     # バックグラウンド診断
     # ======================================================
 
-    def run_diagnosis(self, ai_enabled=True):
-
+    def run_diagnosis(
+        self,
+        ai_enabled=True,
+        ai_model="gemma4",
+    ):
+    
         try:
-
+        
             (
                 info,
                 memory_processes,
@@ -84,9 +108,10 @@ class AIPCDiagnosisApp:
                 ai_analysis,
                 log_path,
             ) = run_diagnosis_process(
-                ai_enabled=ai_enabled
+                ai_enabled=ai_enabled,
+                ai_model=ai_model,
             )
-
+    
             self.root.after(
                 0,
                 self.diagnosis_completed,
@@ -97,9 +122,9 @@ class AIPCDiagnosisApp:
                 ai_analysis,
                 log_path,
             )
-
+    
         except Exception as e:
-
+        
             self.root.after(
                 0,
                 self.diagnosis_error,

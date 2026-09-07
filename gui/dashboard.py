@@ -4,6 +4,7 @@ import os
 import webbrowser
 from .report_window import ReportWindow
 from diagnosis.path_utils import REPORTS_DIR
+from diagnosis.ai.ai_analyzer import OLLAMA_MODELS
 
 from .widgets import (
     DiagnosisCard,
@@ -149,6 +150,37 @@ class Dashboard:
             side="left",
             padx=10,
             pady=5
+        )
+        
+        # --------------------------------------------------
+        # AIモデル選択
+        # --------------------------------------------------
+
+        self.ai_model = tk.StringVar(
+            value="Gemma 4"
+        )
+
+        ttk.Label(
+            ai_frame,
+            text="使用モデル："
+        ).pack(
+            side="left",
+            padx=(20, 5),
+            pady=5
+        )
+
+        self.ai_model_combo = ttk.Combobox(
+            ai_frame,
+            textvariable=self.ai_model,
+            values=list(OLLAMA_MODELS.keys()),
+            state="readonly",
+            width=18,
+        )
+
+        self.ai_model_combo.pack(
+            side="left",
+            padx=(0, 10),
+            pady=5,
         )
 
 
@@ -470,13 +502,21 @@ class Dashboard:
     
         if ai_enabled is None:
             ai_enabled = self.ai_enabled.get()
+            
+        selected_model = OLLAMA_MODELS[
+            self.ai_model.get()
+        ]
     
         print(
             f"GUI設定：AI分析 "
             f"{'ON' if ai_enabled else 'OFF'}"
         )
+        
+        print(
+            f"GUI設定：使用モデル {selected_model}"
+        )
     
-        self.on_diagnosis(ai_enabled)
+        self.on_diagnosis(ai_enabled, selected_model)
 
     # ======================================================
     # 診断完了
