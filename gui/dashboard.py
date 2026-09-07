@@ -128,62 +128,70 @@ class Dashboard:
             pady=10
         )
 
+        # AI分析 ON / OFF
         self.ai_enabled = tk.BooleanVar(value=False)
 
         ttk.Radiobutton(
             ai_frame,
             text="ON",
             variable=self.ai_enabled,
-            value=True
-        ).pack(
-            side="left",
-            padx=10,
-            pady=5
+            value=True,
+            width=5
+        ).grid(
+            row=0,
+            column=0,
+            padx=(10, 5),
+            pady=5,
+            sticky="w"
         )
 
         ttk.Radiobutton(
             ai_frame,
             text="OFF",
             variable=self.ai_enabled,
-            value=False
-        ).pack(
-            side="left",
-            padx=10,
-            pady=5
-        )
-        
-        # --------------------------------------------------
-        # AIモデル選択
-        # --------------------------------------------------
-
-        self.ai_model = tk.StringVar(
-            value="Gemma 4"
+            value=False,
+            width=5
+        ).grid(
+            row=0,
+            column=1,
+            padx=5,
+            pady=5,
+            sticky="w"
         )
 
+        # 使用モデル
         ttk.Label(
             ai_frame,
             text="使用モデル："
-        ).pack(
-            side="left",
+        ).grid(
+            row=0,
+            column=2,
             padx=(20, 5),
-            pady=5
+            pady=5,
+            sticky="w"
         )
+
+        self.ai_model = tk.StringVar(value="Gemma 4")
 
         self.ai_model_combo = ttk.Combobox(
             ai_frame,
             textvariable=self.ai_model,
             values=list(OLLAMA_MODELS.keys()),
             state="readonly",
-            width=18,
+            width=18
         )
 
-        self.ai_model_combo.pack(
-            side="left",
-            padx=(0, 10),
+        self.ai_model_combo.grid(
+            row=0,
+            column=3,
+            padx=5,
             pady=5,
+            sticky="w"
         )
+        
+        ai_frame.columnconfigure(3, weight=1)
 
-
+        # 診断・レポート出力
         control_frame = ttk.Frame(
             main_frame,
         )
