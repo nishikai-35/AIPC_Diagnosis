@@ -1,10 +1,21 @@
 import tkinter as tk
 from tkinter import messagebox
 import threading
+import ctypes
 
 from app import run_diagnosis_process
 from gui.dashboard import Dashboard
 
+
+def set_dpi_awareness():
+    """WindowsのDPIスケーリングに対応する"""
+
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(
+            ctypes.c_void_p(-4)
+        )
+    except Exception:
+        pass
 
 class AIPCDiagnosisApp:
 
@@ -97,9 +108,9 @@ class AIPCDiagnosisApp:
         ai_enabled=True,
         ai_model="gemma4",
     ):
-    
+
         try:
-        
+
             (
                 info,
                 memory_processes,
@@ -111,7 +122,7 @@ class AIPCDiagnosisApp:
                 ai_enabled=ai_enabled,
                 ai_model=ai_model,
             )
-    
+
             self.root.after(
                 0,
                 self.diagnosis_completed,
@@ -122,9 +133,9 @@ class AIPCDiagnosisApp:
                 ai_analysis,
                 log_path,
             )
-    
+
         except Exception as e:
-        
+
             self.root.after(
                 0,
                 self.diagnosis_error,
@@ -190,6 +201,8 @@ class AIPCDiagnosisApp:
 
 def main():
 
+    set_dpi_awareness()
+    
     root = tk.Tk()
 
     app = AIPCDiagnosisApp(
