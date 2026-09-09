@@ -117,6 +117,31 @@ def validate_retention(
         )
 
 
+# ==========================================================
+# 監視間隔検証
+# ==========================================================
+def validate_monitoring_interval(
+    config: configparser.ConfigParser,
+) -> None:
+    """
+    監視間隔を検証する。
+
+    条件:
+        - 1秒以上
+    """
+
+    interval_seconds = config.getint(
+        "monitoring",
+        "interval_seconds",
+    )
+
+    if interval_seconds <= 0:
+        raise ValueError(
+            "監視間隔は1秒以上で設定してください: "
+            f"{interval_seconds}"
+        )
+
+
 def validate_config(
     config: configparser.ConfigParser,
 ) -> None:
@@ -131,6 +156,7 @@ def validate_config(
     required_sections = (
         "diagnosis",
         "retention",
+        "monitoring",
     )
 
     for section in required_sections:
@@ -157,6 +183,9 @@ def validate_config(
         "retention": (
             "json_hours",
             "html_hours",
+        ),
+        "monitoring": (
+            "interval_seconds",
         ),
     }
 
@@ -218,6 +247,14 @@ def validate_config(
         config,
         "html_hours",
         "HTMLレポート",
+    )
+
+    # ==========================================================
+    # 監視間隔
+    # ==========================================================
+
+    validate_monitoring_interval(
+        config,
     )
 
 

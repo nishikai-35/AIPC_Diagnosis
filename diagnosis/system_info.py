@@ -66,6 +66,65 @@ def get_hardware_data():
         return None
 
 
+def get_hardware_data_without_start():
+    """
+    LibreHardwareMonitorを起動せず、
+    起動済みのWeb Serverからハードウェア情報を取得する。
+    """
+
+    try:
+        with urlopen(
+            LIBRE_HARDWARE_MONITOR_URL,
+            timeout=5,
+        ) as response:
+
+            return json.load(response)
+
+    except Exception as e:
+
+        print(
+            f"LibreHardwareMonitorへの接続に失敗しました: {e}"
+        )
+
+        return None
+
+
+def get_monitoring_system_info() -> dict:
+    """
+    Windows Serviceによる継続監視用のシステム情報を取得する。
+
+    LibreHardwareMonitorは起動せず、
+    起動済みのWeb Serverからハードウェア情報を取得する。
+    """
+
+    # LibreHardwareMonitorからハードウェア情報を取得
+    hardware_data = get_hardware_data_without_start()
+
+    # psutilから基本システム情報を取得
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage("C:\\")
+
+    return {
+        # CPU
+        "cpu_usage": get_cpu_usage(),
+        "cpu_temperature": get_cpu_temperature(hardware_data),
+
+        # Memory
+        "memory_total": memory.total / (1024 ** 3),
+        "memory_used": memory.used / (1024 ** 3),
+        "memory_available": memory.available / (1024 ** 3),
+        "memory_usage": memory.percent,
+
+        # Disk
+        "disk_total": disk.total / (1024 ** 3),
+        "disk_used": disk.used / (1024 ** 3),
+        "disk_free": disk.free / (1024 ** 3),
+        "disk_usage": disk.percent,
+
+        # GPU
+        "gpu_usage": get_gpu_usage(hardware_data),
+        "gpu_temperature": get_gpu_temperature(hardware_data),
+    }
 
 
 def find_sensor(node, sensor_text: str, sensor_type: str):
