@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
-
 from diagnosis.config import get_int
 from diagnosis.path_utils import REPORTS_DIR
 

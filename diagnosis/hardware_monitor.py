@@ -1,194 +1,255 @@
-import socket
-import subprocess
-import time
+import logging
+from typing import Any
 
-import psutil
-
-from diagnosis.path_utils import LHM_EXE
-
-
-LHM_HOST = "127.0.0.1"
-LHM_PORT = 8085
+from diagnosis.lhs_client import (
+    LHSClient,
+    get_lhs_monitoring_values,
+)
 
 
-def is_libre_hardware_monitor_running():
+LOGGER_NAME = "AI_PC_Diagnosis.monitoring"
+logger = logging.getLogger(LOGGER_NAME)
+
+
+# ============================================================
+# LibreHardwareService
+# ============================================================
+
+def is_libre_hardware_service_ready() -> bool:
     """
-    LibreHardwareMonitorが起動しているか確認する。
+    LibreHardwareServiceの共有メモリが利用可能か確認する。
+
+    LibreHardwareServiceはWindowsサービスとして常駐するため、
+    LibreHardwareMonitor.exeを起動したり、
+    HTTP/8085へ接続したりしない。
     """
 
     try:
-        for process in psutil.process_iter(["name"]):
-            name = process.info.get("name")
+        with LHSClient() as client:
+            client.get_sensors()
 
-            if name and name.lower() == "librehardwaremonitor.exe":
-                return True
-
-    except Exception as e:
-        print(
-            f"LibreHardwareMonitorの起動確認に失敗しました: {e}"
+        logger.debug(
+            "LibreHardwareServiceの共有メモリが利用可能です。"
         )
 
-    return False
+        return True
+
+    except Exception as e:
+        logger.debug(
+            "LibreHardwareServiceの共有メモリを利用できません: %s",
+            e,
+        )
+
+        return False
 
 
-def is_libre_hardware_monitor_ready():
+def get_hardware_monitor_values() -> dict[str, Any]:
     """
-    LibreHardwareMonitorのWeb Serverが
-    8085番ポートで接続可能か確認する。
+    LibreHardwareServiceから監視用センサー値を取得する。
+
+    Returns:
+        {
+            "cpu_usage": ...,
+            "cpu_temperature": ...,
+            "gpu_usage": ...,
+            "gpu_temperature": ...,
+            "memory_usage": ...,
+        }
+
+    センサーを取得できない場合は各値がNoneになる。
+    """
+
+    result = {
+        "cpu_usage": None,
+        "cpu_temperature": None,
+        "gpu_usage": None,
+        "gpu_temperature": None,
+        "memory_usage": None,
+    }
+
+    try:
+        values = get_lhs_monitoring_values()
+
+        result.update(
+            {
+                "cpu_usage": _to_float(
+                    values.get("cpu_usage")
+                ),
+                "cpu_temperature": _to_float(
+                    values.get("cpu_temperature")
+                ),
+                "gpu_usage": _to_float(
+                    values.get("gpu_usage")
+                ),
+                "gpu_temperature": _to_float(
+                    values.get("gpu_temperature")
+                ),
+                "memory_usage": _to_float(
+                    values.get("memory_usage")
+                ),
+            }
+        )
+
+        logger.debug(
+            "LibreHardwareServiceからセンサー値を取得しました。 "
+            "CPU=%s%% CPU温度=%s℃ GPU=%s%% GPU温度=%s℃ Memory=%s%%",
+            result["cpu_usage"],
+            result["cpu_temperature"],
+            result["gpu_usage"],
+            result["gpu_temperature"],
+            result["memory_usage"],
+        )
+
+    except Exception:
+        logger.exception(
+            "LibreHardwareServiceからのセンサー取得に失敗しました。"
+        )
+
+    return result
+
+
+def get_hardware_sensor_value(
+    identifier: str,
+) -> float | None:
+    """
+    LibreHardwareServiceから指定identifierの
+    センサー値を取得する。
     """
 
     try:
-        with socket.create_connection(
-            (LHM_HOST, LHM_PORT),
-            timeout=1,
-        ):
-            return True
+        with LHSClient() as client:
+            value = client.get_sensor_value(identifier)
 
-    except OSError:
-        return False
+        return _to_float(value)
+
+    except Exception:
+        logger.exception(
+            "LHSセンサー値の取得に失敗しました。 "
+            "identifier=%s",
+            identifier,
+        )
+
+        return None
+
+
+def _to_float(value: Any) -> float | None:
+    """
+    センサー値をfloatへ変換する。
+    """
+
+    if value is None:
+        return None
+
+    try:
+        return float(value)
+
+    except (TypeError, ValueError):
+        return None
+
+
+# ============================================================
+# Compatibility functions
+# ============================================================
+#
+# 旧LibreHardwareMonitor方式との互換性を維持するための関数。
+#
+# v1.0.6ではLibreHardwareMonitor.exeを起動しない。
+# ============================================================
+
+def is_libre_hardware_monitor_running() -> bool:
+    """
+    旧API互換用。
+
+    v1.0.6ではLibreHardwareMonitor.exeを検索しない。
+    LibreHardwareServiceが利用可能かを確認する。
+    """
+
+    return is_libre_hardware_service_ready()
+
+
+def is_libre_hardware_monitor_ready() -> bool:
+    """
+    旧API互換用。
+
+    v1.0.6では8085 Web Serverを確認しない。
+    LibreHardwareServiceの共有メモリを確認する。
+    """
+
+    return is_libre_hardware_service_ready()
 
 
 def wait_for_libre_hardware_monitor(
-    timeout=15,
-    interval=0.5,
-):
+    timeout_seconds: int = 30,
+) -> bool:
     """
-    LibreHardwareMonitorのWeb Serverが
-    利用可能になるまで待機する。
+    旧API互換用。
 
-    timeout:
-        最大待機時間（秒）
+    LibreHardwareMonitorのWeb Serverを待機する処理は
+    v1.0.6では使用しない。
 
-    interval:
-        確認間隔（秒）
+    LibreHardwareServiceはWindowsサービスとして
+    常駐しているため、短時間の再試行だけを行う。
     """
 
-    print(
-        "LibreHardwareMonitorの起動完了を待っています..."
+    logger.info(
+        "LibreHardwareServiceの利用可能状態を確認します。 "
+        "timeout=%s秒",
+        timeout_seconds,
     )
 
-    start_time = time.time()
+    # LHSの共有メモリがすぐに利用できる場合
+    if is_libre_hardware_service_ready():
+        return True
 
-    while time.time() - start_time < timeout:
-
-        if is_libre_hardware_monitor_ready():
-            print(
-                "LibreHardwareMonitorの接続準備が完了しました。"
-            )
-            return True
-
-        time.sleep(interval)
-
-    print(
-        "LibreHardwareMonitorの起動完了を確認できませんでした。"
+    logger.warning(
+        "LibreHardwareServiceの共有メモリが利用できません。"
     )
 
     return False
 
 
-def start_libre_hardware_monitor():
+def start_libre_hardware_monitor(
+    wait_timeout: int = 30,
+) -> bool:
     """
-    LibreHardwareMonitorを管理者権限で起動する。
+    旧API互換用。
 
-    すでに起動している場合でも、
-    Web Serverが利用可能になるまで確認する。
+    v1.0.6ではLibreHardwareMonitor.exeを起動しない。
+
+    LibreHardwareServiceはWindowsサービスとして
+    事前に起動していることを前提とする。
     """
 
-    # --------------------------------------------------
-    # すでに起動している場合
-    # --------------------------------------------------
+    logger.info(
+        "LibreHardwareMonitor.exeの起動処理は"
+        "v1.0.6では実行しません。"
+    )
 
-    if is_libre_hardware_monitor_running():
+    logger.info(
+        "LibreHardwareServiceの利用可能状態を確認します。"
+    )
 
-        print(
-            "LibreHardwareMonitorはすでに起動しています。"
-        )
+    return wait_for_libre_hardware_monitor(
+        timeout_seconds=wait_timeout
+    )
 
-        # プロセスは存在するがWeb Serverが
-        # 起動途中の可能性があるため待機する
-        return wait_for_libre_hardware_monitor()
 
-    # --------------------------------------------------
-    # EXE存在確認
-    # --------------------------------------------------
+def stop_libre_hardware_monitor(
+    process=None,
+) -> None:
+    """
+    旧API互換用。
 
-    if not LHM_EXE.exists():
+    v1.0.6ではLibreHardwareMonitor.exeを
+    AI PC Diagnosisから終了させない。
 
-        print(
-            "LibreHardwareMonitor.exeが見つかりません: "
-            f"{LHM_EXE}"
-        )
+    LibreHardwareServiceの起動・停止は
+    Windows Service側で管理する。
+    """
 
-        return False
+    logger.debug(
+        "LibreHardwareMonitorの停止処理は"
+        "v1.0.6では実行しません。"
+    )
 
-    # --------------------------------------------------
-    # LibreHardwareMonitor起動
-    # --------------------------------------------------
-
-    try:
-
-        print(
-            "LibreHardwareMonitorを管理者権限で起動しています..."
-        )
-
-        # WindowsのUACを使用して管理者権限で起動
-        subprocess.Popen(
-            [
-                "powershell",
-                "-WindowStyle", "Hidden",
-                "-Command",
-                (
-                    f'Start-Process '
-                    f'-FilePath "{LHM_EXE}" '
-                    f'-WorkingDirectory "{LHM_EXE.parent}" '
-                    f'-Verb RunAs '
-                    f'-WindowStyle Hidden'
-                ),
-            ],
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
-
-        print(
-            "LibreHardwareMonitorの起動処理を開始しました。"
-        )
-
-        # --------------------------------------------------
-        # プロセス起動待機
-        # --------------------------------------------------
-
-        process_timeout = 10
-        start_time = time.time()
-
-        while (
-            time.time() - start_time < process_timeout
-        ):
-
-            if is_libre_hardware_monitor_running():
-                print(
-                    "LibreHardwareMonitorのプロセス起動を確認しました。"
-                )
-                break
-
-            time.sleep(0.5)
-
-        else:
-
-            print(
-                "LibreHardwareMonitorのプロセス起動を確認できませんでした。"
-            )
-
-            return False
-
-        # --------------------------------------------------
-        # Web Server起動待機
-        # --------------------------------------------------
-
-        return wait_for_libre_hardware_monitor()
-
-    except Exception as e:
-
-        print(
-            f"LibreHardwareMonitorの起動に失敗しました: {e}"
-        )
-
-        return False
+    return None

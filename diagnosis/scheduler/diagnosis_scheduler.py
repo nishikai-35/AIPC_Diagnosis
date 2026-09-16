@@ -2,6 +2,8 @@ import argparse
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from app import run_diagnosis_process
+from diagnosis.report.html_report import export_html
+from diagnosis.path_utils import REPORTS_DIR
 
 
 def scheduled_diagnosis():
@@ -23,6 +25,12 @@ def scheduled_diagnosis():
             ai_analysis,
             log_path,
         ) = run_diagnosis_process()
+        
+        html_path = export_html(
+            diagnosis,
+            ai_analysis,
+            REPORTS_DIR,
+        )
 
         print()
         print("=" * 60)
@@ -31,7 +39,7 @@ def scheduled_diagnosis():
 
         print(f"診断結果 : {diagnosis.status}")
         print(f"JSON     : {log_path}")
-
+        print(f"HTML     : {html_path}")
         print("=" * 60)
 
     except Exception as e:

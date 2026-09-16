@@ -38,6 +38,13 @@ def run_smartctl():
     except subprocess.SubprocessError as e:
         print(f"smartctlの実行に失敗しました: {e}")
         return None
+    
+    print(f"[SMART DEBUG] returncode = {result.returncode}")
+    print(f"[SMART DEBUG] stdout length = {len(result.stdout)}")
+    print(f"[SMART DEBUG] stderr length = {len(result.stderr)}")
+
+    if result.stderr:
+        print(f"[SMART DEBUG] stderr = {result.stderr.strip()}")
 
     # smartctlは警告・異常状態の場合でも
     # 終了コードが0以外になる場合があるため、
@@ -52,6 +59,7 @@ def run_smartctl():
 
         return None
 
+    print("[SMART DEBUG] smartctl stdout取得成功")
     return output
 
 
@@ -202,6 +210,7 @@ def get_smart_info():
         ),
     }
 
+    print(f"[SMART DEBUG] smart_info = {smart_info}")
     return smart_info
 
 

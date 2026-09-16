@@ -5,28 +5,36 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-
-# プロジェクトルートをPythonのモジュール検索パスへ追加
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-
-from diagnosis.system_info import get_monitoring_system_info
-from diagnosis.path_utils import DATA_DIR
 from diagnosis.config import get_int
+from diagnosis.path_utils import DATA_DIR
+from diagnosis.system_info import get_monitoring_system_info
 
+
+# ============================================================
+# Paths
+# ============================================================
 
 CURRENT_DATA_DIR = DATA_DIR / "data"
 CURRENT_JSON = CURRENT_DATA_DIR / "current.json"
+
 MONITORING_LOG_DIR = DATA_DIR / "logs" / "monitoring"
 MONITORING_LOG_FILE = MONITORING_LOG_DIR / "monitoring.log"
 
+LOGGER_NAME = "AI_PC_Diagnosis.monitoring"
 
-def setup_logger() -> logging.Logger:
+
+# ============================================================
+# Logger
+# ============================================================
+
+def setup_logger():
     """
-    監視用ログを設定する。
+    監視サービス用ログを初期化する。
     """
 
     MONITORING_LOG_DIR.mkdir(
@@ -34,13 +42,12 @@ def setup_logger() -> logging.Logger:
         exist_ok=True,
     )
 
-    logger = logging.getLogger("ai_pc_diagnosis_monitoring")
-
+    logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(logging.INFO)
+    logger.propagate = False
 
     if not logger.handlers:
-
-        file_handler = logging.FileHandler(
+        handler = logging.FileHandler(
             MONITORING_LOG_FILE,
             encoding="utf-8",
         )
@@ -49,19 +56,20 @@ def setup_logger() -> logging.Logger:
             "%(asctime)s [%(levelname)s] %(message)s"
         )
 
-        file_handler.setFormatter(formatter)
-
-        logger.addHandler(file_handler)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
 
     return logger
 
 
-def collect_monitoring_data() -> dict:
-    """
-    現在のPC状態を取得する。
+# ============================================================
+# Monitoring data collection
+# ============================================================
 
-    監視専用のget_monitoring_system_info()を利用して、
-    CPU / Memory / GPU / Diskの情報を取得する。
+def collect_monitoring_data():
+    """
+    LibreHardwareServiceおよびpsutilから
+    監視用システム情報を取得する。
     """
 
     info = get_monitoring_system_info()
@@ -95,9 +103,46 @@ def collect_monitoring_data() -> dict:
     }
 
 
-def save_current_data(data: dict) -> None:
+# ============================================================
+# Sensor readiness
+# ============================================================
+
+def is_sensor_data_ready(data):
     """
-    最新の監視データをcurrent.jsonへ保存する。
+    起動時診断に必要なセンサー値が取得できているか確認する。
+
+    必須:
+        CPU使用率
+        CPU温度
+        メモリ使用率
+
+    任意:
+        GPU使用率
+        GPU温度
+
+    GPUを搭載していないPCや、GPUセンサーを取得できない環境でも
+    CPU / CPU温度 / メモリが取得できれば診断を開始できる。
+    """
+
+    required_values = [
+        data["cpu"]["usage"],
+        data["cpu"]["temperature"],
+        data["memory"]["usage"],
+    ]
+
+    return all(
+        value is not None
+        for value in required_values
+    )
+
+
+# ============================================================
+# Current data
+# ============================================================
+
+def save_current_data(data):
+    """
+    current.jsonを安全に保存する。
     """
 
     CURRENT_DATA_DIR.mkdir(
@@ -105,11 +150,12 @@ def save_current_data(data: dict) -> None:
         exist_ok=True,
     )
 
-    with CURRENT_JSON.open(
+    temp_file = CURRENT_JSON.with_suffix(".tmp")
+
+    with temp_file.open(
         "w",
         encoding="utf-8",
     ) as file:
-
         json.dump(
             data,
             file,
@@ -117,22 +163,50 @@ def save_current_data(data: dict) -> None:
             indent=4,
         )
 
+    temp_file.replace(CURRENT_JSON)
 
-def collect_and_save() -> dict:
+
+def save_monitoring_data(data):
     """
-    PC状態を取得してcurrent.jsonへ保存する。
+    監視データをcurrent.jsonへ保存する。
     """
 
-    data = collect_monitoring_data()
+    logger = logging.getLogger(LOGGER_NAME)
 
     save_current_data(data)
+
+    logger.info(
+        "監視データを更新しました: %s",
+        CURRENT_JSON,
+    )
 
     return data
 
 
-def run_monitoring_loop() -> None:
+# ============================================================
+# Combined collection
+# ============================================================
+
+def collect_and_save():
     """
-    設定された監視間隔でPC状態を継続監視する。
+    システム情報を取得してcurrent.jsonへ保存する。
+    """
+
+    data = collect_monitoring_data()
+
+    return save_monitoring_data(data)
+
+
+# ============================================================
+# Continuous monitoring loop
+# ============================================================
+
+def run_monitoring_loop():
+    """
+    単独実行用の監視ループ。
+
+    Windowsサービスからは通常、
+    service/windows_service.py の監視ループを使用する。
     """
 
     logger = setup_logger()
@@ -142,71 +216,19 @@ def run_monitoring_loop() -> None:
         "interval_seconds",
     )
 
-    logger.info("監視を開始しました。")
     logger.info(
-        f"監視間隔: {interval_seconds}秒"
+        "監視ループを開始しました。interval=%s秒",
+        interval_seconds,
     )
-
-    print()
-    print("監視を開始します。")
-    print(f"監視間隔: {interval_seconds}秒")
-    print()
 
     while True:
 
         try:
+            collect_and_save()
 
-            data = collect_and_save()
-
-            message = (
-                f"監視データを保存しました。"
-                f" timestamp={data['timestamp']}"
-            )
-
-            logger.info(message)
-
-            print(
-                f"[{data['timestamp']}] "
-                f"監視データを保存しました。"
-            )
-
-        except Exception as e:
-
+        except Exception:
             logger.exception(
-                "監視データの取得・保存に失敗しました。"
-            )
-
-            print(
-                f"[{datetime.now().isoformat()}] "
-                f"監視データの取得に失敗しました: {e}"
+                "監視処理でエラーが発生しました。"
             )
 
         time.sleep(interval_seconds)
-
-
-if __name__ == "__main__":
-
-    print("=" * 60)
-    print("       AI PC Diagnosis Monitoring")
-    print("=" * 60)
-
-    try:
-
-        run_monitoring_loop()
-
-    except KeyboardInterrupt:
-
-        logger = setup_logger()
-        logger.info("監視を終了しました。")
-
-        print()
-        print("監視を終了しました。")
-
-    except Exception as e:
-
-        print()
-        print("監視でエラーが発生しました。")
-        print(f"エラー: {e}")
-
-    print()
-    print("=" * 60)

@@ -292,37 +292,33 @@ def main(scheduled=False, ai_enabled=True, ai_model="gemma4"):
     )
 
     # ============================================================
-    # 手動実行時のみHTMLを出力
+    # HTML出力
     # ============================================================
 
-    if not scheduled:
+    html_path = export_html(
+        diagnosis,
+        ai_analysis,
+        REPORTS_DIR,
+    )
 
-        html_path = export_html(
-            diagnosis,
-            ai_analysis,
-            REPORTS_DIR,
-        )
+    # ============================================================
+    # レポート出力結果
+    # ============================================================
 
-        print()
-        print("=" * 60)
-        print("レポート出力完了")
-        print("=" * 60)
+    print()
+    print("=" * 60)
 
-        print(f"JSON: {log_path}")
-        print(f"HTML: {html_path}")
-
-        print("=" * 60)
-
+    if scheduled:
+        print("                 起動時診断完了")
     else:
+        print("                 レポート出力完了")
 
-        print()
-        print("=" * 60)
-        print("定期診断完了")
-        print("=" * 60)
+    print("=" * 60)
 
-        print(f"JSON: {log_path}")
+    print(f"JSON: {log_path}")
+    print(f"HTML: {html_path}")
 
-        print("=" * 60)
+    print("=" * 60)
 
 
 

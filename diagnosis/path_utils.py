@@ -7,11 +7,14 @@ def get_app_dir() -> Path:
     """
     アプリケーション本体の基準ディレクトリを取得する。
 
-    開発環境:
-        AI_pcDiagnosis/
+    GUI:
+        C:\\Program Files\\AI_PC_Diagnosis
 
-    PyInstaller:
-        AI_PC_Diagnosis.exe が存在するフォルダ
+    Service:
+        C:\\Program Files\\AI_PC_Diagnosis\\AI_PC_Diagnosis_Service
+
+    開発環境:
+        AI_PC_Diagnosis/
     """
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
@@ -19,15 +22,42 @@ def get_app_dir() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def get_install_dir(app_dir: Path) -> Path:
+    """
+    インストール全体の基準ディレクトリを取得する。
+
+    GUI:
+        app_dirそのもの
+
+    Service:
+        AI_PC_Diagnosis_Serviceの親ディレクトリ
+    """
+    if not getattr(sys, "frozen", False):
+        return app_dir
+
+    tools_dir = app_dir / "tools"
+
+    if tools_dir.exists():
+        return app_dir
+
+    parent_tools_dir = app_dir.parent / "tools"
+
+    if parent_tools_dir.exists():
+        return app_dir.parent
+
+    # toolsがまだ存在しない場合は従来のapp_dirを返す
+    return app_dir
+
+
 def get_data_dir(app_dir: Path) -> Path:
     """
     設定・ログ・レポートなどのデータ保存先を取得する。
 
     開発環境:
-        プロジェクトフォルダを使用する。
+        プロジェクトフォルダ
 
     PyInstaller:
-        C:\\ProgramData\\AI_PC_Diagnosis を使用する。
+        C:\\ProgramData\\AI_PC_Diagnosis
     """
     if getattr(sys, "frozen", False):
         program_data = os.environ.get("PROGRAMDATA")
@@ -44,14 +74,14 @@ def get_data_dir(app_dir: Path) -> Path:
 
 APP_DIR = get_app_dir()
 
+# GUI / Service共通のインストールルート
+INSTALL_DIR = get_install_dir(APP_DIR)
+
 DATA_DIR = get_data_dir(APP_DIR)
 
+
 # アプリ本体と一緒に配置するもの
-TOOLS_DIR = APP_DIR / "tools"
-
-LHM_DIR = TOOLS_DIR / "LibreHardwareMonitor"
-
-LHM_EXE = LHM_DIR / "LibreHardwareMonitor.exe"
+TOOLS_DIR = INSTALL_DIR / "tools"
 
 SMARTCTL_DIR = TOOLS_DIR / "smartctl"
 

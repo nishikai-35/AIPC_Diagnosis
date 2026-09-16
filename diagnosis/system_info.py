@@ -1,226 +1,208 @@
-import json
 import platform
 from datetime import datetime
-from urllib.request import urlopen
 
 import psutil
 
+from diagnosis.lhs_client import LHSClient
 
-LIBRE_HARDWARE_MONITOR_URL = "http://127.0.0.1:8085/data.json"
+
+# ============================================================
+# LibreHardwareService sensor identifiers
+# ============================================================
+
+CPU_USAGE_SENSOR = "/intelcpu/0/load/0"
+CPU_TEMPERATURE_SENSOR = "/intelcpu/0/temperature/0"
+
+GPU_USAGE_SENSOR = "/gpu-nvidia/0/load/0"
+GPU_TEMPERATURE_SENSOR = "/gpu-nvidia/0/temperature/0"
+
+MEMORY_USAGE_SENSOR = "/ram/load/0"
 
 
-def get_cpu_usage() -> float:
+# ============================================================
+# LHS sensor access
+# ============================================================
+
+def get_lhs_sensor_values() -> dict:
     """
-    CPU使用率を取得する
-    """
-    return psutil.cpu_percent(interval=1)
+    LibreHardwareServiceから必要なセンサー値を取得する。
 
-
-def get_memory_usage() -> float:
-    """
-    メモリ使用率を取得する
-    """
-    memory = psutil.virtual_memory()
-    return memory.percent
-
-
-def get_disk_usage() -> float:
-    """
-    Cドライブのディスク使用率を取得する
-    """
-    disk = psutil.disk_usage("C:\\")
-    return disk.percent
-
-
-def get_hardware_data():
-    """
-    LibreHardwareMonitorからハードウェア情報を取得する
+    LibreHardwareServiceはWindowsサービスとして常駐しているため、
+    LibreHardwareMonitor.exeを起動したり、
+    HTTP/8085へ接続したりしない。
     """
 
-    # LibreHardwareMonitorを自動起動
-    from diagnosis.hardware_monitor import start_libre_hardware_monitor
-
-    ready = start_libre_hardware_monitor()
-
-    if not ready:
-        print(
-            "LibreHardwareMonitorの準備が完了していないため、"
-            "ハードウェア情報を取得できません。"
-        )
-        return None
-
-    try:
-        with urlopen(
-            LIBRE_HARDWARE_MONITOR_URL,
-            timeout=5,
-        ) as response:
-
-            return json.load(response)
-
-    except Exception as e:
-
-        print(
-            f"LibreHardwareMonitorへの接続に失敗しました: {e}"
-        )
-
-        return None
-
-
-def get_hardware_data_without_start():
-    """
-    LibreHardwareMonitorを起動せず、
-    起動済みのWeb Serverからハードウェア情報を取得する。
-    """
-
-    try:
-        with urlopen(
-            LIBRE_HARDWARE_MONITOR_URL,
-            timeout=5,
-        ) as response:
-
-            return json.load(response)
-
-    except Exception as e:
-
-        print(
-            f"LibreHardwareMonitorへの接続に失敗しました: {e}"
-        )
-
-        return None
-
-
-def get_monitoring_system_info() -> dict:
-    """
-    Windows Serviceによる継続監視用のシステム情報を取得する。
-
-    LibreHardwareMonitorは起動せず、
-    起動済みのWeb Serverからハードウェア情報を取得する。
-    """
-
-    # LibreHardwareMonitorからハードウェア情報を取得
-    hardware_data = get_hardware_data_without_start()
-
-    # psutilから基本システム情報を取得
-    memory = psutil.virtual_memory()
-    disk = psutil.disk_usage("C:\\")
-
-    return {
-        # CPU
-        "cpu_usage": get_cpu_usage(),
-        "cpu_temperature": get_cpu_temperature(hardware_data),
-
-        # Memory
-        "memory_total": memory.total / (1024 ** 3),
-        "memory_used": memory.used / (1024 ** 3),
-        "memory_available": memory.available / (1024 ** 3),
-        "memory_usage": memory.percent,
-
-        # Disk
-        "disk_total": disk.total / (1024 ** 3),
-        "disk_used": disk.used / (1024 ** 3),
-        "disk_free": disk.free / (1024 ** 3),
-        "disk_usage": disk.percent,
-
-        # GPU
-        "gpu_usage": get_gpu_usage(hardware_data),
-        "gpu_temperature": get_gpu_temperature(hardware_data),
+    result = {
+        "cpu_usage": None,
+        "cpu_temperature": None,
+        "gpu_usage": None,
+        "gpu_temperature": None,
+        "memory_usage": None,
     }
 
+    try:
+        with LHSClient() as client:
+            sensors = client.get_sensors()
 
-def find_sensor(node, sensor_text: str, sensor_type: str):
+        sensor_map = {
+            sensor["identifier"]: sensor
+            for sensor in sensors
+            if isinstance(sensor, dict)
+        }
+
+        result["cpu_usage"] = get_sensor_value(
+            sensor_map,
+            CPU_USAGE_SENSOR,
+        )
+
+        result["cpu_temperature"] = get_sensor_value(
+            sensor_map,
+            CPU_TEMPERATURE_SENSOR,
+        )
+
+        result["gpu_usage"] = get_sensor_value(
+            sensor_map,
+            GPU_USAGE_SENSOR,
+        )
+
+        result["gpu_temperature"] = get_sensor_value(
+            sensor_map,
+            GPU_TEMPERATURE_SENSOR,
+        )
+
+        result["memory_usage"] = get_sensor_value(
+            sensor_map,
+            MEMORY_USAGE_SENSOR,
+        )
+
+    except Exception as e:
+        print(
+            f"LibreHardwareServiceからのセンサー取得に失敗しました: {e}"
+        )
+
+    return result
+
+
+def get_sensor_value(
+    sensor_map: dict,
+    identifier: str,
+):
     """
-    LibreHardwareMonitorのデータから指定したセンサーを探す
+    LHSセンサー辞書からvalueを取得する。
     """
 
-    if not isinstance(node, dict):
+    sensor = sensor_map.get(identifier)
+
+    if sensor is None:
         return None
 
-    if (
-        node.get("Text") == sensor_text
-        and node.get("Type") == sensor_type
-    ):
-        return node.get("Value")
-
-    for child in node.get("Children", []):
-        result = find_sensor(child, sensor_text, sensor_type)
-
-        if result is not None:
-            return result
-
-    return None
-
-
-def parse_sensor_value(value):
-    """
-    LibreHardwareMonitorの値から数値だけを取り出す
-    """
+    value = sensor.get("value")
 
     if value is None:
         return None
 
     try:
-        return float(
-            value.replace("°C", "")
-            .replace("%", "")
-            .replace("MHz", "")
-            .strip()
-        )
-
-    except (ValueError, AttributeError):
+        return float(value)
+    except (TypeError, ValueError):
         return None
 
 
-def get_cpu_temperature(hardware_data) -> float | None:
+# ============================================================
+# Basic system information
+# ============================================================
+
+def get_cpu_usage() -> float | None:
     """
-    CPU最高温度を取得する
-    """
+    CPU使用率を取得する。
 
-    value = find_sensor(
-        hardware_data,
-        "Core Max",
-        "Temperature",
-    )
-
-    return parse_sensor_value(value)
-
-
-def get_gpu_temperature(hardware_data) -> float | None:
-    """
-    GPU温度を取得する
+    LibreHardwareServiceのCPUセンサーを使用する。
     """
 
-    value = find_sensor(
-        hardware_data,
-        "GPU Core",
-        "Temperature",
-    )
+    values = get_lhs_sensor_values()
 
-    return parse_sensor_value(value)
+    return values["cpu_usage"]
 
 
-def get_gpu_usage(hardware_data) -> float | None:
+def get_memory_usage() -> float | None:
     """
-    GPU使用率を取得する
+    メモリ使用率を取得する。
+
+    LibreHardwareServiceのメモリセンサーを使用する。
     """
 
-    value = find_sensor(
-        hardware_data,
-        "GPU Core",
-        "Load",
-    )
+    values = get_lhs_sensor_values()
 
-    return parse_sensor_value(value)
+    return values["memory_usage"]
 
+
+def get_disk_usage() -> float:
+    """
+    Cドライブのディスク使用率を取得する。
+    """
+
+    disk = psutil.disk_usage("C:\\")
+
+    return disk.percent
+
+
+# ============================================================
+# Monitoring information
+# ============================================================
+
+def get_monitoring_system_info() -> dict:
+    """
+    Windows Serviceによる継続監視用のシステム情報を取得する。
+
+    CPU/GPU/メモリ:
+        LibreHardwareService
+
+    ディスク:
+        psutil
+
+    LibreHardwareMonitor.exeは起動しない。
+    HTTP/8085も使用しない。
+    """
+
+    lhs_values = get_lhs_sensor_values()
+
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage("C:\\")
+
+    return {
+        "cpu_usage": lhs_values["cpu_usage"],
+        "cpu_temperature": lhs_values["cpu_temperature"],
+
+        "memory_total": memory.total / (1024 ** 3),
+        "memory_used": memory.used / (1024 ** 3),
+        "memory_available": memory.available / (1024 ** 3),
+        "memory_usage": lhs_values["memory_usage"],
+
+        "disk_total": disk.total / (1024 ** 3),
+        "disk_used": disk.used / (1024 ** 3),
+        "disk_free": disk.free / (1024 ** 3),
+        "disk_usage": disk.percent,
+
+        "gpu_usage": lhs_values["gpu_usage"],
+        "gpu_temperature": lhs_values["gpu_temperature"],
+    }
+
+
+# ============================================================
+# Full system information
+# ============================================================
 
 def get_system_info() -> dict:
     """
-    PCのシステム情報をまとめて取得する
+    PCのシステム情報をまとめて取得する。
+
+    v1.0.6ではLibreHardwareMonitorを起動しない。
+
+    CPU/GPU/メモリのセンサー情報は
+    LibreHardwareServiceから取得する。
     """
 
-    # LibreHardwareMonitorからハードウェア情報を取得
-    hardware_data = get_hardware_data()
+    lhs_values = get_lhs_sensor_values()
 
-    # psutilから基本システム情報を取得
     memory = psutil.virtual_memory()
     disk = psutil.disk_usage("C:\\")
 
@@ -232,18 +214,22 @@ def get_system_info() -> dict:
 
         # CPU情報
         "cpu": platform.processor(),
-        "physical_cores": psutil.cpu_count(logical=False),
-        "logical_cores": psutil.cpu_count(logical=True),
-        "cpu_usage": get_cpu_usage(),
+        "physical_cores": psutil.cpu_count(
+            logical=False
+        ),
+        "logical_cores": psutil.cpu_count(
+            logical=True
+        ),
+        "cpu_usage": lhs_values["cpu_usage"],
 
         # CPU温度
-        "cpu_temperature": get_cpu_temperature(hardware_data),
+        "cpu_temperature": lhs_values["cpu_temperature"],
 
         # メモリ情報
         "memory_total": memory.total / (1024 ** 3),
         "memory_used": memory.used / (1024 ** 3),
         "memory_available": memory.available / (1024 ** 3),
-        "memory_usage": memory.percent,
+        "memory_usage": lhs_values["memory_usage"],
 
         # ディスク情報
         "disk_total": disk.total / (1024 ** 3),
@@ -252,16 +238,22 @@ def get_system_info() -> dict:
         "disk_usage": disk.percent,
 
         # GPU情報
-        "gpu_usage": get_gpu_usage(hardware_data),
-        "gpu_temperature": get_gpu_temperature(hardware_data),
+        "gpu_usage": lhs_values["gpu_usage"],
+        "gpu_temperature": lhs_values["gpu_temperature"],
 
         # システム起動時刻
-        "boot_time": datetime.fromtimestamp(psutil.boot_time()),
+        "boot_time": datetime.fromtimestamp(
+            psutil.boot_time()
+        ),
     }
 
 
-# テスト確認
+# ============================================================
+# Direct execution test
+# ============================================================
+
 if __name__ == "__main__":
+
     info = get_system_info()
 
     print("=" * 60)
@@ -275,35 +267,86 @@ if __name__ == "__main__":
 
     print("\n[CPU]")
     print(f"CPU             : {info['cpu']}")
-    print(f"Physical Cores  : {info['physical_cores']}")
-    print(f"Logical Cores   : {info['logical_cores']}")
-    print(f"CPU Usage       : {info['cpu_usage']:.1f} %")
+    print(
+        f"Physical Cores  : "
+        f"{info['physical_cores']}"
+    )
+    print(
+        f"Logical Cores   : "
+        f"{info['logical_cores']}"
+    )
+
+    if info["cpu_usage"] is not None:
+        print(
+            f"CPU Usage       : "
+            f"{info['cpu_usage']:.1f} %"
+        )
+    else:
+        print("CPU Usage       : 取得できません")
 
     if info["cpu_temperature"] is not None:
-        print(f"CPU Temperature : {info['cpu_temperature']:.1f} °C")
+        print(
+            f"CPU Temperature : "
+            f"{info['cpu_temperature']:.1f} °C"
+        )
     else:
         print("CPU Temperature : 取得できません")
 
     print("\n[Memory]")
-    print(f"Total           : {info['memory_total']:.2f} GB")
-    print(f"Used            : {info['memory_used']:.2f} GB")
-    print(f"Available       : {info['memory_available']:.2f} GB")
-    print(f"Usage           : {info['memory_usage']:.1f} %")
+    print(
+        f"Total           : "
+        f"{info['memory_total']:.2f} GB"
+    )
+    print(
+        f"Used            : "
+        f"{info['memory_used']:.2f} GB"
+    )
+    print(
+        f"Available       : "
+        f"{info['memory_available']:.2f} GB"
+    )
+
+    if info["memory_usage"] is not None:
+        print(
+            f"Usage           : "
+            f"{info['memory_usage']:.1f} %"
+        )
+    else:
+        print("Usage           : 取得できません")
 
     print("\n[Disk C:]")
-    print(f"Total           : {info['disk_total']:.2f} GB")
-    print(f"Used            : {info['disk_used']:.2f} GB")
-    print(f"Free            : {info['disk_free']:.2f} GB")
-    print(f"Usage           : {info['disk_usage']:.1f} %")
+    print(
+        f"Total           : "
+        f"{info['disk_total']:.2f} GB"
+    )
+    print(
+        f"Used            : "
+        f"{info['disk_used']:.2f} GB"
+    )
+    print(
+        f"Free            : "
+        f"{info['disk_free']:.2f} GB"
+    )
+    print(
+        f"Usage           : "
+        f"{info['disk_usage']:.1f} %"
+    )
 
     print("\n[GPU]")
+
     if info["gpu_usage"] is not None:
-        print(f"GPU Usage       : {info['gpu_usage']:.1f} %")
+        print(
+            f"GPU Usage       : "
+            f"{info['gpu_usage']:.1f} %"
+        )
     else:
         print("GPU Usage       : 取得できません")
 
     if info["gpu_temperature"] is not None:
-        print(f"GPU Temperature : {info['gpu_temperature']:.1f} °C")
+        print(
+            f"GPU Temperature : "
+            f"{info['gpu_temperature']:.1f} °C"
+        )
     else:
         print("GPU Temperature : 取得できません")
 

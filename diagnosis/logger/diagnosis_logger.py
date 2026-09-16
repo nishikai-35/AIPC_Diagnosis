@@ -2,7 +2,6 @@ import json
 from datetime import datetime, timedelta
 from diagnosis.path_utils import LOGS_DIR
 from dataclasses import asdict
-
 from diagnosis.config import get_int
 
 
