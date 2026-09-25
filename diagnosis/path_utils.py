@@ -91,6 +91,9 @@ SMARTCTL_EXE = SMARTCTL_DIR / "smartctl.exe"
 # 管理・運用データ
 CONFIG_FILE = DATA_DIR / "config.ini"
 
+# Gmail OAuth認証トークン
+GMAIL_TOKEN_FILE = DATA_DIR / "gmail_token.json"
+
 REPORTS_DIR = DATA_DIR / "reports"
 
 LOGS_DIR = DATA_DIR / "logs"

@@ -95,33 +95,6 @@ SENSORS_MUTEX = (
 )
 
 
-# Memory map header
-#
-# Offset 0:
-#   metadata length       int32
-#
-# Offset 4:
-#   update interval       int32
-#
-# Offset 8:
-#   last update           int64
-#
-# Offset 16:
-#   metadata
-#
-# Header starts at:
-#   4 + metadata_length
-#
-# Header:
-#   index length          int32
-#   index offset          int32
-#   index format          int32
-#   data length           int32
-#   data offset           int32
-#   reserved              16 bytes
-#
-
-
 # ============================================================
 # Utility
 # ============================================================
@@ -432,11 +405,11 @@ class LHSClient:
     ) -> dict[str, Any]:
         """
         index entryからセンサーJSONを取得する。
-    
+
         LHSのMessagePack indexは、
         環境によってDataIndexがリスト形式で
         デコードされる場合がある。
-    
+
         DataIndex:
             0: identifier
             1: offset
@@ -445,39 +418,39 @@ class LHSClient:
             4: sensorType
             5: hardwareName
         """
-    
+
         if isinstance(entry, dict):
             offset = int(entry["offset"])
             size = int(entry["size"])
-    
+
         elif isinstance(entry, (list, tuple)):
             if len(entry) < 3:
                 raise RuntimeError(
                     "LHS index entryの要素数が不足しています。 "
                     f"entry={entry}"
                 )
-    
+
             offset = int(entry[1])
             size = int(entry[2])
-    
+
         else:
             raise RuntimeError(
                 "LHS index entryの形式が不正です。 "
                 f"type={type(entry).__name__}, "
                 f"entry={entry}"
             )
-    
+
         start = data_offset + offset
         end = start + size
-    
+
         raw_data = buffer[start:end]
-    
+
         if len(raw_data) != size:
             raise RuntimeError(
                 "LHSセンサーデータのサイズが不正です。 "
                 f"expected={size}, actual={len(raw_data)}"
             )
-    
+
         return json.loads(
             raw_data.decode("utf-8")
         )
@@ -593,6 +566,36 @@ class LHSClient:
 
 
 # ============================================================
+# Dynamic sensor search
+# ============================================================
+
+def _find_sensor_value(
+    sensors: list[dict[str, Any]],
+    prefixes: tuple[str, ...],
+    suffix: str,
+) -> float | int | None:
+    """
+    identifierのprefixとsuffixからセンサー値を検索する。
+    """
+
+    for sensor in sensors:
+        identifier = sensor.get("identifier", "")
+
+        if not isinstance(identifier, str):
+            continue
+
+        if not identifier.startswith(prefixes):
+            continue
+
+        if not identifier.endswith(suffix):
+            continue
+
+        return sensor.get("value")
+
+    return None
+
+
+# ============================================================
 # Convenience functions
 # ============================================================
 
@@ -626,30 +629,76 @@ def get_lhs_monitoring_values() -> dict[str, Any]:
     """
     AI PC Diagnosisで使用する5つのLHSセンサー値を取得する。
 
-    Returns:
-        {
-            "cpu_usage": ...,
-            "cpu_temperature": ...,
-            "gpu_usage": ...,
-            "gpu_temperature": ...,
-            "memory_usage": ...,
-        }
+    CPU/GPUはidentifierのprefixから
+    メーカーを自動判定する。
     """
 
-    identifiers = {
-        "cpu_usage": "/intelcpu/0/load/0",
-        "cpu_temperature": "/intelcpu/0/temperature/0",
-        "gpu_usage": "/gpu-nvidia/0/load/0",
-        "gpu_temperature": "/gpu-nvidia/0/temperature/0",
-        "memory_usage": "/ram/load/0",
+    with LHSClient() as client:
+        sensors = client.get_sensors()
+
+    values = {
+        "cpu_usage": _find_sensor_value(
+            sensors,
+            (
+                "/intelcpu/",
+                "/amdcpu/",
+            ),
+            "/load/0",
+        ),
+
+        "cpu_temperature": _find_sensor_value(
+            sensors,
+            (
+                "/intelcpu/",
+                "/amdcpu/",
+            ),
+            "/temperature/0",
+        ),
+
+        "gpu_usage": _find_sensor_value(
+            sensors,
+            (
+                "/gpu-nvidia/",
+                "/gpu-amd/",
+                "/gpu-intel/",
+            ),
+            "/load/0",
+        ),
+
+        "gpu_temperature": _find_sensor_value(
+            sensors,
+            (
+                "/gpu-nvidia/",
+                "/gpu-amd/",
+                "/gpu-intel/",
+            ),
+            "/temperature/0",
+        ),
+
+        "memory_usage": _find_sensor_value(
+            sensors,
+            (
+                "/ram/",
+            ),
+            "/load/0",
+        ),
     }
 
-    with LHSClient() as client:
-        values = {}
-
-        for key, identifier in identifiers.items():
-            values[key] = client.get_sensor_value(
-                identifier
+    for key, value in values.items():
+        if value is None:
+            logger.warning(
+                "LHSセンサー値を取得できません: %s",
+                key,
             )
 
-        return values
+    logger.debug(
+        "LHS動的センサー取得結果: "
+        "CPU=%s%% CPU温度=%s℃ GPU=%s%% GPU温度=%s℃ Memory=%s%%",
+        values["cpu_usage"],
+        values["cpu_temperature"],
+        values["gpu_usage"],
+        values["gpu_temperature"],
+        values["memory_usage"],
+    )
+
+    return values

@@ -4,8 +4,6 @@ import win32service
 import win32serviceutil
 
 from diagnosis.config import get_int
-from diagnosis.path_utils import REPORTS_DIR
-
 from service.monitoring import (
     collect_and_save,
     collect_monitoring_data,
@@ -13,6 +11,7 @@ from service.monitoring import (
     save_monitoring_data,
     setup_logger,
 )
+
 
 class AIPCDiagnosisMonitoringService(
     win32serviceutil.ServiceFramework
@@ -38,6 +37,10 @@ class AIPCDiagnosisMonitoringService(
 
     SENSOR_RETRY_SECONDS = 5
     SENSOR_WAIT_TIMEOUT_SECONDS = 120
+
+    # ========================================================
+    # Initialization
+    # ========================================================
 
     def __init__(self, args):
 
@@ -118,8 +121,9 @@ class AIPCDiagnosisMonitoringService(
         LibreHardwareServiceのセンサーが
         利用可能になるまで待機する。
 
-        CPU使用率、CPU温度、メモリ使用率が
-        取得できれば診断開始可能とする。
+        CPU使用率、CPU温度、メモリ使用率、
+        ディスク使用率が取得できれば
+        診断開始可能とする。
 
         GPUセンサーは任意。
         """
@@ -129,13 +133,14 @@ class AIPCDiagnosisMonitoringService(
             "LibreHardwareServiceのセンサー初期化を待機します。"
         )
 
-        start_time = __import__(
-            "time"
-        ).time()
+        import time
+
+        start_time = time.time()
 
         while self.running:
 
             try:
+
                 data = collect_monitoring_data()
 
                 if is_sensor_data_ready(data):
@@ -148,20 +153,20 @@ class AIPCDiagnosisMonitoringService(
                     self.logger.info(
                         "初期センサー値 "
                         "CPU=%s%% CPU_TEMP=%s°C "
-                        "MEMORY=%s%% GPU=%s%% GPU_TEMP=%s°C",
-                        data["cpu"]["usage"],
-                        data["cpu"]["temperature"],
-                        data["memory"]["usage"],
-                        data["gpu"]["usage"],
-                        data["gpu"]["temperature"],
+                        "MEMORY=%s%% GPU=%s%% GPU_TEMP=%s°C "
+                        "DISK=%s%%",
+                        data.get("cpu_usage"),
+                        data.get("cpu_temperature"),
+                        data.get("memory_usage"),
+                        data.get("gpu_usage"),
+                        data.get("gpu_temperature"),
+                        data.get("disk_usage"),
                     )
 
                     return data
 
                 elapsed = int(
-                    __import__(
-                        "time"
-                    ).time() - start_time
+                    time.time() - start_time
                 )
 
                 self.logger.info(
@@ -169,12 +174,13 @@ class AIPCDiagnosisMonitoringService(
                     "センサー初期化を待機中です。"
                     " CPU=%s CPU_TEMP=%s "
                     "MEMORY=%s GPU=%s GPU_TEMP=%s "
-                    "経過=%s秒",
-                    data["cpu"]["usage"],
-                    data["cpu"]["temperature"],
-                    data["memory"]["usage"],
-                    data["gpu"]["usage"],
-                    data["gpu"]["temperature"],
+                    "DISK=%s 経過=%s秒",
+                    data.get("cpu_usage"),
+                    data.get("cpu_temperature"),
+                    data.get("memory_usage"),
+                    data.get("gpu_usage"),
+                    data.get("gpu_temperature"),
+                    data.get("disk_usage"),
                     elapsed,
                 )
 
@@ -182,6 +188,7 @@ class AIPCDiagnosisMonitoringService(
                     elapsed
                     >= self.SENSOR_WAIT_TIMEOUT_SECONDS
                 ):
+
                     self.logger.warning(
                         "LibreHardwareServiceの"
                         "センサー待機がタイムアウトしました。"
@@ -204,10 +211,12 @@ class AIPCDiagnosisMonitoringService(
             )
 
             if result == win32event.WAIT_OBJECT_0:
+
                 self.logger.info(
                     "センサー待機中に"
                     "サービス停止要求を受信しました。"
                 )
+
                 return None
 
         return None
@@ -221,6 +230,9 @@ class AIPCDiagnosisMonitoringService(
         Windows起動時の診断レポートを1回生成する。
 
         AI分析は実行しない。
+
+        run_diagnosis_process()側で
+        JSONおよびHTMLを生成する。
         """
 
         self.logger.info(
@@ -230,9 +242,6 @@ class AIPCDiagnosisMonitoringService(
         try:
 
             from app import run_diagnosis_process
-            from diagnosis.report.html_report import (
-                export_html,
-            )
 
             (
                 info,
@@ -241,6 +250,7 @@ class AIPCDiagnosisMonitoringService(
                 diagnosis,
                 ai_analysis,
                 log_path,
+                html_path,
             ) = run_diagnosis_process(
                 ai_enabled=False,
             )
@@ -248,12 +258,6 @@ class AIPCDiagnosisMonitoringService(
             self.logger.info(
                 "起動時診断JSONを生成しました: %s",
                 log_path,
-            )
-
-            html_path = export_html(
-                diagnosis,
-                ai_analysis,
-                REPORTS_DIR,
             )
 
             self.logger.info(
@@ -333,7 +337,8 @@ class AIPCDiagnosisMonitoringService(
                 )
 
                 save_monitoring_data(
-                    initial_data
+                    initial_data,
+                    self.logger,
                 )
 
                 self.logger.info(
@@ -363,14 +368,8 @@ class AIPCDiagnosisMonitoringService(
 
                 try:
 
-                    data = collect_and_save()
-
-                    self.logger.info(
-                        "監視データ更新完了 "
-                        "CPU=%s%% Memory=%s%% GPU=%s%%",
-                        data["cpu"]["usage"],
-                        data["memory"]["usage"],
-                        data["gpu"]["usage"],
+                    collect_and_save(
+                        self.logger
                     )
 
                     servicemanager.LogInfoMsg(
@@ -406,6 +405,7 @@ class AIPCDiagnosisMonitoringService(
         except Exception as e:
 
             if self.logger:
+
                 self.logger.exception(
                     "サービスで致命的なエラーが"
                     "発生しました: %s",
@@ -422,6 +422,7 @@ class AIPCDiagnosisMonitoringService(
         finally:
 
             if self.logger:
+
                 self.logger.info(
                     "AI PC Diagnosis Monitoring Service "
                     "を終了します。"
@@ -437,13 +438,17 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) == 1:
+
         servicemanager.Initialize()
+
         servicemanager.PrepareToHostSingle(
             AIPCDiagnosisMonitoringService
         )
+
         servicemanager.StartServiceCtrlDispatcher()
 
     else:
+
         win32serviceutil.HandleCommandLine(
             AIPCDiagnosisMonitoringService
         )

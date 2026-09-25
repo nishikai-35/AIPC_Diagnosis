@@ -21,6 +21,10 @@ tools/
 # Backup spec files
 *.spec.bak
 
+# Test files
+test_*.py
+test_*.html
+
 # =========================================================
 # Application runtime data
 # =========================================================
@@ -31,6 +35,10 @@ docs/
 
 # User configuration
 config.ini
+
+# JSON
+credentials.json
+gmail_token.json
 
 # =========================================================
 # Release / distribution generated files

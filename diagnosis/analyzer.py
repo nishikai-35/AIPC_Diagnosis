@@ -586,7 +586,7 @@ def analyze_system(
         results.append(
             analyze_gpu_temperature(gpu_temperature)
         )
-        
+
     if smart_info is not None:
         results.append(
             analyze_smart(smart_info)
@@ -594,7 +594,7 @@ def analyze_system(
 
     if event_logs is not None:
         event_result = analyze_event_logs(event_logs)
-    
+
         results.append(
             DiagnosisResult(
                 item="Windowsイベントログ",
@@ -605,12 +605,5 @@ def analyze_system(
                 recommendations=event_result["recommendations"],
             )
         )
-
-    if any(result.status == "警告" for result in results):
-        overall_status = "警告"
-    elif any(result.status == "注意" for result in results):
-        overall_status = "注意"
-    else:
-        overall_status = "正常"
 
     return results

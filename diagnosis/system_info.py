@@ -7,88 +7,17 @@ from diagnosis.lhs_client import LHSClient
 
 
 # ============================================================
-# LibreHardwareService sensor identifiers
-# ============================================================
-
-CPU_USAGE_SENSOR = "/intelcpu/0/load/0"
-CPU_TEMPERATURE_SENSOR = "/intelcpu/0/temperature/0"
-
-GPU_USAGE_SENSOR = "/gpu-nvidia/0/load/0"
-GPU_TEMPERATURE_SENSOR = "/gpu-nvidia/0/temperature/0"
-
-MEMORY_USAGE_SENSOR = "/ram/load/0"
-
-
-# ============================================================
 # LHS sensor access
 # ============================================================
-
-def get_lhs_sensor_values() -> dict:
-    """
-    LibreHardwareServiceから必要なセンサー値を取得する。
-
-    LibreHardwareServiceはWindowsサービスとして常駐しているため、
-    LibreHardwareMonitor.exeを起動したり、
-    HTTP/8085へ接続したりしない。
-    """
-
-    result = {
-        "cpu_usage": None,
-        "cpu_temperature": None,
-        "gpu_usage": None,
-        "gpu_temperature": None,
-        "memory_usage": None,
-    }
-
-    try:
-        with LHSClient() as client:
-            sensors = client.get_sensors()
-
-        sensor_map = {
-            sensor["identifier"]: sensor
-            for sensor in sensors
-            if isinstance(sensor, dict)
-        }
-
-        result["cpu_usage"] = get_sensor_value(
-            sensor_map,
-            CPU_USAGE_SENSOR,
-        )
-
-        result["cpu_temperature"] = get_sensor_value(
-            sensor_map,
-            CPU_TEMPERATURE_SENSOR,
-        )
-
-        result["gpu_usage"] = get_sensor_value(
-            sensor_map,
-            GPU_USAGE_SENSOR,
-        )
-
-        result["gpu_temperature"] = get_sensor_value(
-            sensor_map,
-            GPU_TEMPERATURE_SENSOR,
-        )
-
-        result["memory_usage"] = get_sensor_value(
-            sensor_map,
-            MEMORY_USAGE_SENSOR,
-        )
-
-    except Exception as e:
-        print(
-            f"LibreHardwareServiceからのセンサー取得に失敗しました: {e}"
-        )
-
-    return result
-
-
 def get_sensor_value(
     sensor_map: dict,
     identifier: str,
 ):
     """
     LHSセンサー辞書からvalueを取得する。
+
+    LHSのtypeフィールドには依存せず、
+    identifierで対象センサーを特定する。
     """
 
     sensor = sensor_map.get(identifier)
@@ -108,9 +37,251 @@ def get_sensor_value(
 
 
 # ============================================================
+# CPU sensor detection
+# ============================================================
+def get_cpu_usage_sensor(sensor_map: dict):
+    """
+    CPU使用率センサーを取得する。
+
+    Intel:
+        /intelcpu/0/load/0
+
+    AMD:
+        /amdcpu/0/load/0
+
+    LHSのtypeフィールドには依存せず、
+    identifierを基準に判定する。
+    """
+
+    for identifier in sensor_map:
+        if not (
+            identifier.startswith("/intelcpu/")
+            or identifier.startswith("/amdcpu/")
+        ):
+            continue
+
+        if identifier.endswith("/load/0"):
+            return get_sensor_value(
+                sensor_map,
+                identifier,
+            )
+
+    return None
+
+
+def get_cpu_temperature_sensor(sensor_map: dict):
+    """
+    CPU温度センサーを取得する。
+
+    Intel:
+        /intelcpu/0/temperature/...
+
+    AMD:
+        /amdcpu/0/temperature/...
+
+    AMDではTctl/Tdieを優先する。
+    """
+
+    # --------------------------------------------------------
+    # 1. AMDのTctl/Tdieを優先
+    # --------------------------------------------------------
+    for identifier, sensor in sensor_map.items():
+        if not identifier.startswith("/amdcpu/"):
+            continue
+
+        if not identifier.startswith("/amdcpu/0/temperature/"):
+            continue
+
+        if not isinstance(sensor, dict):
+            continue
+
+        name = str(
+            sensor.get("name", "")
+        ).lower()
+
+        if "tctl" in name or "tdie" in name:
+            return get_sensor_value(
+                sensor_map,
+                identifier,
+            )
+
+    # --------------------------------------------------------
+    # 2. Intel / AMDのCPU温度を取得
+    #
+    # Intelでは /temperature/0 が Core Max
+    # AMDではTctl/Tdieが存在しない場合もあるため、
+    # temperature配下の最初の有効値を使用する。
+    # --------------------------------------------------------
+    for identifier in sensor_map:
+        if not (
+            identifier.startswith("/intelcpu/")
+            or identifier.startswith("/amdcpu/")
+        ):
+            continue
+
+        if "/temperature/" not in identifier:
+            continue
+
+        value = get_sensor_value(
+            sensor_map,
+            identifier,
+        )
+
+        if value is not None:
+            return value
+
+    return None
+
+
+# ============================================================
+# GPU sensor detection
+# ============================================================
+def get_gpu_usage_sensor(sensor_map: dict):
+    """
+    GPU使用率センサーを取得する。
+
+    NVIDIA:
+        /gpu-nvidia/0/load/0
+
+    AMD:
+        /gpu-amd/0/load/0
+
+    LHSのtypeフィールドには依存せず、
+    identifierを基準に判定する。
+    """
+
+    for identifier in sensor_map:
+        if not (
+            identifier.startswith("/gpu-nvidia/")
+            or identifier.startswith("/gpu-amd/")
+        ):
+            continue
+
+        if identifier.endswith("/load/0"):
+            return get_sensor_value(
+                sensor_map,
+                identifier,
+            )
+
+    return None
+
+
+def get_gpu_temperature_sensor(sensor_map: dict):
+    """
+    GPU温度センサーを取得する。
+
+    NVIDIA:
+        /gpu-nvidia/0/temperature/...
+
+    AMD:
+        /gpu-amd/0/temperature/...
+
+    GPUによって温度センサーが存在しない場合があるため、
+    存在しない場合はNoneを返す。
+    """
+
+    for identifier in sensor_map:
+        if not (
+            identifier.startswith("/gpu-nvidia/")
+            or identifier.startswith("/gpu-amd/")
+        ):
+            continue
+
+        if "/temperature/" not in identifier:
+            continue
+
+        value = get_sensor_value(
+            sensor_map,
+            identifier,
+        )
+
+        if value is not None:
+            return value
+
+    return None
+
+
+# ============================================================
+# LHS sensor values
+# ============================================================
+def get_lhs_sensor_values() -> dict:
+    """
+    LibreHardwareServiceから必要なセンサー値を取得する。
+
+    LibreHardwareServiceはWindowsサービスとして常駐しているため、
+    LibreHardwareMonitor.exeを起動したり、
+    HTTP/8085へ接続したりしない。
+
+    CPU:
+        Intel / AMD
+
+    GPU:
+        NVIDIA / AMD
+
+    Memory:
+        /ram/load/0
+    """
+
+    result = {
+        "cpu_usage": None,
+        "cpu_temperature": None,
+        "gpu_usage": None,
+        "gpu_temperature": None,
+        "memory_usage": None,
+    }
+
+    try:
+        with LHSClient() as client:
+            sensors = client.get_sensors()
+
+        sensor_map = {
+            sensor["identifier"]: sensor
+            for sensor in sensors
+            if isinstance(sensor, dict)
+            and "identifier" in sensor
+        }
+
+        # ----------------------------------------------------
+        # CPU
+        # ----------------------------------------------------
+        result["cpu_usage"] = get_cpu_usage_sensor(
+            sensor_map
+        )
+
+        result["cpu_temperature"] = get_cpu_temperature_sensor(
+            sensor_map
+        )
+
+        # ----------------------------------------------------
+        # GPU
+        # ----------------------------------------------------
+        result["gpu_usage"] = get_gpu_usage_sensor(
+            sensor_map
+        )
+
+        result["gpu_temperature"] = get_gpu_temperature_sensor(
+            sensor_map
+        )
+
+        # ----------------------------------------------------
+        # Memory
+        # ----------------------------------------------------
+        result["memory_usage"] = get_sensor_value(
+            sensor_map,
+            "/ram/load/0",
+        )
+
+    except Exception as e:
+        print(
+            f"LibreHardwareServiceからのセンサー取得に失敗しました: {e}"
+        )
+
+    return result
+
+
+# ============================================================
 # Basic system information
 # ============================================================
-
 def get_cpu_usage() -> float | None:
     """
     CPU使用率を取得する。
@@ -148,7 +319,6 @@ def get_disk_usage() -> float:
 # ============================================================
 # Monitoring information
 # ============================================================
-
 def get_monitoring_system_info() -> dict:
     """
     Windows Serviceによる継続監視用のシステム情報を取得する。
@@ -190,7 +360,6 @@ def get_monitoring_system_info() -> dict:
 # ============================================================
 # Full system information
 # ============================================================
-
 def get_system_info() -> dict:
     """
     PCのシステム情報をまとめて取得する。
@@ -207,12 +376,16 @@ def get_system_info() -> dict:
     disk = psutil.disk_usage("C:\\")
 
     return {
+        # ----------------------------------------------------
         # OS情報
+        # ----------------------------------------------------
         "os": platform.system(),
         "os_version": platform.version(),
         "machine": platform.machine(),
 
+        # ----------------------------------------------------
         # CPU情報
+        # ----------------------------------------------------
         "cpu": platform.processor(),
         "physical_cores": psutil.cpu_count(
             logical=False
@@ -222,26 +395,36 @@ def get_system_info() -> dict:
         ),
         "cpu_usage": lhs_values["cpu_usage"],
 
+        # ----------------------------------------------------
         # CPU温度
+        # ----------------------------------------------------
         "cpu_temperature": lhs_values["cpu_temperature"],
 
+        # ----------------------------------------------------
         # メモリ情報
+        # ----------------------------------------------------
         "memory_total": memory.total / (1024 ** 3),
         "memory_used": memory.used / (1024 ** 3),
         "memory_available": memory.available / (1024 ** 3),
         "memory_usage": lhs_values["memory_usage"],
 
+        # ----------------------------------------------------
         # ディスク情報
+        # ----------------------------------------------------
         "disk_total": disk.total / (1024 ** 3),
         "disk_used": disk.used / (1024 ** 3),
         "disk_free": disk.free / (1024 ** 3),
         "disk_usage": disk.percent,
 
+        # ----------------------------------------------------
         # GPU情報
+        # ----------------------------------------------------
         "gpu_usage": lhs_values["gpu_usage"],
         "gpu_temperature": lhs_values["gpu_temperature"],
 
+        # ----------------------------------------------------
         # システム起動時刻
+        # ----------------------------------------------------
         "boot_time": datetime.fromtimestamp(
             psutil.boot_time()
         ),
@@ -251,7 +434,6 @@ def get_system_info() -> dict:
 # ============================================================
 # Direct execution test
 # ============================================================
-
 if __name__ == "__main__":
 
     info = get_system_info()

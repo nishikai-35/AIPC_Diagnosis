@@ -1,5 +1,7 @@
 import configparser
-
+import os
+import tempfile
+import shutil
 from .path_utils import CONFIG_FILE
 
 
@@ -142,6 +144,75 @@ def validate_monitoring_interval(
         )
 
 
+def migrate_config(
+    config: configparser.ConfigParser,
+) -> bool:
+    """
+    既存のconfig.iniに不足している設定を追加する。
+
+    既存の設定値は変更しない。
+    戻り値:
+        True  = 設定を追加した
+        False = 変更なし
+    """
+
+    changed = False
+
+    # ==========================================================
+    # デフォルト設定
+    # ==========================================================
+
+    default_sections = {
+        "diagnosis": {
+            "cpu_caution": "80",
+            "cpu_warning": "95",
+            "memory_caution": "80",
+            "memory_warning": "90",
+            "disk_caution": "80",
+            "disk_warning": "90",
+            "cpu_temperature_caution": "80",
+            "cpu_temperature_warning": "90",
+        },
+        "retention": {
+            "json_hours": "120",
+            "html_hours": "120",
+        },
+        "monitoring": {
+            "interval_seconds": "300",
+        },
+        "user": {
+            "name": "",
+            "email": "",
+            "pc_name": "",
+        },
+        "mail": {
+            "recipient_email": "nishikai120305@gmail.com",
+        },
+    }
+
+    # ==========================================================
+    # 不足セクション・項目を追加
+    # ==========================================================
+
+    for section, options in default_sections.items():
+
+        if not config.has_section(section):
+            config.add_section(section)
+            changed = True
+
+        for option, default_value in options.items():
+
+            if not config.has_option(section, option):
+                config.set(
+                    section,
+                    option,
+                    default_value,
+                )
+                changed = True
+
+    return changed
+
+
 def validate_config(
     config: configparser.ConfigParser,
 ) -> None:
@@ -256,11 +327,57 @@ def validate_config(
     validate_monitoring_interval(
         config,
     )
+    
+
+def save_migrated_config(
+    config: configparser.ConfigParser,
+) -> None:
+    """
+    マイグレーション済み設定を安全に保存する。
+    """
+
+    backup_file = CONFIG_FILE.with_suffix(
+        ".ini.bak"
+    )
+
+    if not backup_file.exists():
+        shutil.copy2(
+            CONFIG_FILE,
+            backup_file,
+        )
+
+    fd, temp_path = tempfile.mkstemp(
+        prefix="config_",
+        suffix=".tmp",
+        dir=CONFIG_FILE.parent,
+    )
+
+    try:
+        with os.fdopen(
+            fd,
+            "w",
+            encoding="utf-8",
+        ) as file:
+            config.write(file)
+
+        os.replace(
+            temp_path,
+            CONFIG_FILE,
+        )
+
+    except Exception:
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+
+        raise
 
 
 def load_config() -> configparser.ConfigParser:
     """
     config.iniを読み込み、
+    不足設定を自動補完した上で
     バリデーション済みの設定オブジェクトを返す。
     """
 
@@ -276,6 +393,17 @@ def load_config() -> configparser.ConfigParser:
             CONFIG_FILE,
             encoding="utf-8",
         )
+
+        # ======================================================
+        # 設定マイグレーション
+        # ======================================================
+
+        if migrate_config(config):
+            save_migrated_config(config)
+
+        # ======================================================
+        # 通常の設定検証
+        # ======================================================
 
         validate_config(config)
 

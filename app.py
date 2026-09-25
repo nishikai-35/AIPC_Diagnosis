@@ -151,7 +151,7 @@ def print_top_cpu_processes(processes):
 
 
 def run_diagnosis_process(
-    ai_enabled=True,
+    ai_enabled=False,
     ai_model="gemma4",
 ):
     """
@@ -203,6 +203,13 @@ def run_diagnosis_process(
         ai_analysis,
     )
 
+    # HTMLレポート保存
+    html_path = export_html(
+        diagnosis,
+        ai_analysis,
+        REPORTS_DIR,
+    )
+    
     return (
         info,
         memory_processes,
@@ -210,6 +217,7 @@ def run_diagnosis_process(
         diagnosis,
         ai_analysis,
         log_path,
+        html_path,
     )
 
 
@@ -222,6 +230,7 @@ def main(scheduled=False, ai_enabled=True, ai_model="gemma4"):
         diagnosis,
         ai_analysis,
         log_path,
+        html_path,
     ) = run_diagnosis_process(
         ai_enabled=ai_enabled,
         ai_model=ai_model,
@@ -292,16 +301,6 @@ def main(scheduled=False, ai_enabled=True, ai_model="gemma4"):
     )
 
     # ============================================================
-    # HTML出力
-    # ============================================================
-
-    html_path = export_html(
-        diagnosis,
-        ai_analysis,
-        REPORTS_DIR,
-    )
-
-    # ============================================================
     # レポート出力結果
     # ============================================================
 
@@ -319,40 +318,4 @@ def main(scheduled=False, ai_enabled=True, ai_model="gemma4"):
     print(f"HTML: {html_path}")
 
     print("=" * 60)
-
-
-
-if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--scheduled",
-        action="store_true",
-        help="定期診断モードで実行する",
-    )
-
-    parser.add_argument(
-        "--no-ai",
-        action="store_true",
-        help="AI分析を無効にする",
-    )
-    
-    parser.add_argument(
-        "--ai-model",
-        choices=[
-            "gemma4",
-            "llama3.2:3b",
-        ],
-        default="gemma4",
-        help="AI分析に使用するOllamaモデル",
-    )
-
-    args = parser.parse_args()
-
-    main(
-        scheduled=args.scheduled,
-        ai_enabled=not args.no_ai,
-        ai_model=args.ai_model,
-    )
 

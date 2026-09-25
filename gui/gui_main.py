@@ -118,6 +118,7 @@ class AIPCDiagnosisApp:
                 diagnosis,
                 ai_analysis,
                 log_path,
+                html_path,
             ) = run_diagnosis_process(
                 ai_enabled=ai_enabled,
                 ai_model=ai_model,
@@ -132,6 +133,7 @@ class AIPCDiagnosisApp:
                 diagnosis,
                 ai_analysis,
                 log_path,
+                html_path,
             )
 
         except Exception as e:
@@ -154,6 +156,7 @@ class AIPCDiagnosisApp:
         diagnosis,
         ai_analysis,
         log_path,
+        html_path,
     ):
 
         self.diagnosis_running = False
